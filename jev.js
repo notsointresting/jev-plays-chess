@@ -33,15 +33,15 @@ export async function chooseMove(game, ChessCtor) {
     return { move: null, probabilities: {}, confidence: null, source: "fallback:no-legal" };
   }
 
-  // In-code analysis: annotate every move with its consequence.
-  const analysis = analysePosition(ChessCtor, game.fen());
+  // In-code analysis: annotate every legal move with its consequence, and build
+  // the rich state (material balance, checkmate headline, board, history).
+  const history = game.history();
+  const analysis = analysePosition(ChessCtor, game.fen(), history);
   let moves = analysis.moves;
 
   // If a position is unusually branchy, keep the most relevant options.
   if (moves.length > MAX_OPTIONS) {
-    moves = [...moves]
-      .sort((a, b) => weight(b) - weight(a))
-      .slice(0, MAX_OPTIONS);
+    moves = [...moves].sort((a, b) => weight(b) - weight(a)).slice(0, MAX_OPTIONS);
   }
 
   const sideToMove = game.turn() === "w" ? "White" : "Black";
@@ -51,34 +51,38 @@ export async function chooseMove(game, ChessCtor) {
   const criteria = {};
   for (const m of moves) criteria[m.san] = m.description;
 
-  const state = {
-    instructions_to_reader:
-      `YOU ARE PLAYING ${sideToMove.toUpperCase()}. It is your turn. ` +
-      `Uppercase letters on the board are your pieces; lowercase are the opponent's.`,
-    position_fen: game.fen(),
-    board: game.ascii(),
-    situation: analysis.summary,
-  };
+  const state = analysis.summary;
 
   const questions = {
     best_move: {
       type: "choice",
       instructions:
-        `You are playing chess as ${sideToMove} and it is your turn. Pick the strongest move. ` +
-        `Take free material when it is offered, deliver checkmate when it is available, and escape check. ` +
-        `Do not play a move described as a blunder or as losing material unless every alternative is worse.`,
+        "You are playing this game of chess and it is your turn. Pick the strongest move. " +
+        "Take free material when it is offered, deliver checkmate when it is available, and escape check. " +
+        "Do not play a move described as a blunder or as losing material unless every alternative is worse.",
       criteria,
+    },
+    // These ride along in the same request. Jev answers them in parallel and
+    // can't read each other, so they cost almost nothing on top of the move.
+    king_in_danger: {
+      type: "noul",
+      instructions: "Your own king is in serious danger in this position.",
+    },
+    posture: {
+      type: "choice",
+      instructions: "What should you be doing in this position right now?",
+      criteria: {
+        attack: "go after the opponent's king",
+        develop: "bring out pieces and castle",
+        grab_material: "win material that is hanging",
+        defend: "parry a threat or protect a weakness",
+        endgame: "push pawns and activate the king",
+      },
     },
     evaluation: {
       type: "score",
-      instructions: "From White's perspective, who stands better right now?",
-      criteria: [
-        "Black is winning",
-        "Black is better",
-        "roughly equal",
-        "White is better",
-        "White is winning",
-      ],
+      instructions: `From ${sideToMove}'s perspective, who stands better right now?`,
+      criteria: ["losing badly", "worse", "roughly equal", "better", "winning"],
     },
   };
 
@@ -103,6 +107,8 @@ export async function chooseMove(game, ChessCtor) {
   const data = await res.json();
   const choice = data.answers?.best_move;
   const evalAns = data.answers?.evaluation;
+  const posture = data.answers?.posture;
+  const kingDanger = data.answers?.king_in_danger;
 
   // Honest fallback: an illegal move is unrepresentable, but if the API ever
   // returns a key we didn't send, we say so via `source` rather than hiding it.
@@ -122,12 +128,20 @@ export async function chooseMove(game, ChessCtor) {
     }
   }
 
+  // The eval Score is from the side-to-move's perspective (0=losing..4=winning).
+  // Normalize to White's perspective so the eval bar is stable across turns.
+  let evalWhite = null;
+  if (typeof evalAns?.score === "number") {
+    evalWhite = game.turn() === "w" ? evalAns.score : 4 - evalAns.score;
+  }
+
   return {
     move,
     probabilities: choice?.probabilities || {},
     confidence: typeof choice?.confidence === "number" ? choice.confidence : null,
-    evalScore: typeof evalAns?.score === "number" ? evalAns.score : null,
-    evalLegend: evalAns?.legend || null,
+    evalScore: evalWhite, // 0=Black winning .. 4=White winning
+    posture: posture?.choice ?? null,
+    kingDanger: typeof kingDanger?.noul === "number" ? kingDanger.noul : null,
     mateAvailable: analysis.mateMove,
     source,
     usage: data.usage || null,
@@ -137,7 +151,7 @@ export async function chooseMove(game, ChessCtor) {
 // Move weight for shortlisting branchy positions: prefer mates, checks,
 // captures, and material gains.
 function weight(m) {
-  return (m.matesNow ? 100 : 0) + (m.givesCheck ? 2 : 0) + (m.net > 0 ? m.net : 0) + (m.net < 0 ? -1 : 0);
+  return (m.givesMate ? 100 : 0) + (m.givesCheck ? 2 : 0) + (m.net > 0 ? m.net : 0) + (m.net < 0 ? -1 : 0);
 }
 
 export async function chooseMoveWithRetry(game, ChessCtor) {

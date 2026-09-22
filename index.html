@@ -76,6 +76,83 @@
       </div>
     </main>
 
+    <section class="explainer">
+      <div class="explainer-inner">
+        <h2>How Jev picks a move</h2>
+        <p class="lead">
+          Jev is a <strong>decision model</strong>, not a chat model. It never
+          writes text and never “thinks out loud.” Given a state and a set of
+          typed questions, it reads the answer probabilities straight out of its
+          own internal representation in a <strong>single parallel forward
+          pass</strong> — no token-by-token generation, no search tree.
+          That's why it answers in tens of milliseconds and can't produce an
+          illegal move.
+        </p>
+
+        <div class="steps">
+          <div class="step">
+            <div class="step-n">1</div>
+            <h3>The position becomes a question</h3>
+            <p>
+              Each turn, the app sends Jev the board (FEN + a plain-text
+              diagram) as the <em>state</em>, and one typed
+              <code>Choice</code> question whose options are
+              <em>every legal move</em>. Because the answer must be one of the
+              options we hand it, an illegal move is impossible by
+              construction — not merely unlikely.
+            </p>
+          </div>
+
+          <div class="step">
+            <div class="step-n">2</div>
+            <h3>The code does the counting, not Jev</h3>
+            <p>
+              Jev is fast and knowledgeable but does <strong>no lookahead</strong>
+              and is weak at arithmetic. So before asking, the app resolves each
+              capture sequence in ordinary code (cheapest attacker first, played
+              to the end) and writes the result into every move's description —
+              “<em>…but then the opponent wins 3 points, a serious blunder</em>”,
+              or “<em>delivering checkmate</em>”. Jev chooses among options that
+              already state their consequences.
+            </p>
+          </div>
+
+          <div class="step">
+            <div class="step-n">3</div>
+            <h3>One parallel readout, calibrated</h3>
+            <p>
+              Jev reads a probability for <em>every</em> legal move at once and
+              returns them together, each trained against real outcomes (a method
+              TypeSafe calls RLCD). The app plays the move Jev believes in most
+              and paints the whole probability distribution as heat on the board —
+              so you see not just <em>what</em> it played but <em>how sure</em> it
+              was and what it nearly played instead.
+            </p>
+          </div>
+
+          <div class="step">
+            <div class="step-n">4</div>
+            <h3>A second question rates the position</h3>
+            <p>
+              In the same request, a typed <code>Score</code> question asks
+              “who's better?” on a five-level scale. Jev answers it in parallel —
+              it can't read the move question — and that drives the eval bar
+              beside the board.
+            </p>
+          </div>
+        </div>
+
+        <p class="note">
+          The honest part: Jev plays like someone who knows chess but calculates
+          nothing — it decides in one glance. The tactical warnings it reads come
+          from the app's code, not from Jev searching ahead. That's the whole
+          point of a System One model: <strong>fast, calibrated single decisions</strong>,
+          with the arithmetic and lookahead kept in code where they belong.
+          <a href="https://archerhume.com/posts/jevs-architecture-unmasked" target="_blank" rel="noopener">Deep dive on Jev's architecture →</a>
+        </p>
+      </div>
+    </section>
+
     <footer class="footer">
       <span>Jev picks from legal moves only — no engine, no generated text.</span>
       <span>

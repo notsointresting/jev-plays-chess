@@ -183,6 +183,21 @@ function renderJevMove(result) {
     tail += `· ⚠ Jev answered off-menu — played its top legal move`;
   }
   el.jmConf.textContent = tail;
+  // Jev's parallel read on the position: what it thinks it should be doing.
+  if (result.posture) {
+    const label = {
+      attack: "attacking",
+      develop: "developing",
+      grab_material: "grabbing material",
+      defend: "defending",
+      endgame: "playing the endgame",
+    }[result.posture] || result.posture;
+    let plan = `Jev's plan: ${label}`;
+    if (typeof result.kingDanger === "number" && result.kingDanger >= 0.5) {
+      plan += ` · ⚠ its king feels exposed (${Math.round(result.kingDanger * 100)}%)`;
+    }
+    el.jmConf.textContent += ` — ${plan}`;
+  }
   const entries = Object.entries(result.probabilities || {})
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3);

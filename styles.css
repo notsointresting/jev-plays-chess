@@ -147,4 +147,24 @@ a:hover { text-decoration: underline; }
 
 .footer { max-width: 1000px; margin: 0 auto; padding: 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 
+/* Explainer */
+.explainer { border-top: 1px solid var(--line); background: linear-gradient(180deg, rgba(125,211,252,0.04), transparent 40%); }
+.explainer-inner { max-width: 1000px; margin: 0 auto; padding: 40px 22px 10px; }
+.explainer h2 { font-size: clamp(22px, 3.5vw, 30px); margin: 0 0 12px; letter-spacing: -0.01em; }
+.explainer .lead { max-width: 760px; color: #c6ccd8; margin: 0 0 26px; }
+.explainer .steps { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+@media (max-width: 720px) { .explainer .steps { grid-template-columns: 1fr; } }
+.step { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; position: relative; }
+.step-n {
+  width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--accent-ink);
+  font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 10px;
+}
+.step h3 { margin: 0 0 6px; font-size: 15px; }
+.step p { margin: 0; font-size: 14px; color: #c6ccd8; }
+.step code { font-family: var(--mono); background: var(--bg); padding: 1px 5px; border-radius: 5px; font-size: 12px; }
+.explainer .note {
+  max-width: 760px; margin: 24px 0 0; padding: 14px 16px; font-size: 13px; color: #c6ccd8;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+}
+
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
