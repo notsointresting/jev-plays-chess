@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Jev Plays Chess — play a decision model that never generates a move</title>
+    <meta
+      name="description"
+      content="Play chess against Jev, TypeSafe's decision model. Every legal move is one option of a single typed Choice question — Jev picks by probability, never generates a move, and can't play an illegal one. Free, no signup, in your browser. Powered by Pollinations."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand"><span class="logo">♞</span> Jev Plays Chess</div>
+      <div class="topbar-right">
+        <span id="conn-status" class="conn-status" data-state="off">Not connected</span>
+        <button id="connect-btn" class="btn btn-primary">Connect Pollen</button>
+        <button id="disconnect-btn" class="btn btn-ghost" hidden>Disconnect</button>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <section class="hero">
+        <h1>Play chess against a model that never <em>generates</em> a move.</h1>
+        <p>
+          Jev is a decision model, not a chat model. Here, every legal move in a
+          position becomes one option of a single typed <strong>Choice</strong>
+          question — Jev returns a probability for each and plays the one it
+          believes in. There is no chess engine underneath and no generated
+          text: an illegal move is impossible by construction.
+        </p>
+        <p class="byline">
+          Free · no signup · paid from <strong>your own</strong> Pollen · powered by
+          <a href="https://gen.pollinations.ai" target="_blank" rel="noopener">Pollinations</a>.
+        </p>
+      </section>
+
+      <div id="banner" class="banner" hidden></div>
+
+      <div class="game">
+        <div class="board-wrap">
+          <div class="evalbar" title="Position evaluation from Jev's Score question">
+            <div id="eval-fill" class="white-fill"></div>
+            <span id="eval-label" class="eval-label">50</span>
+          </div>
+          <div id="board"></div>
+        </div>
+
+        <aside class="panel">
+          <h2>Game</h2>
+          <div class="controls">
+            <div class="row">
+              <span class="small muted">You play</span>
+              <div class="seg" id="side-seg">
+                <button data-side="w" class="active">White</button>
+                <button data-side="b">Black</button>
+              </div>
+            </div>
+            <button id="new-game" class="btn btn-primary">New game</button>
+          </div>
+
+          <div id="status" class="status-line muted">Connect Pollen, then make a move.</div>
+
+          <div id="jev-move" class="jev-move" hidden>
+            <div><span class="muted">Jev played</span> <span class="mv" id="jm-san">—</span>
+              <span class="muted" id="jm-conf"></span></div>
+            <div class="topmoves" id="jm-top"></div>
+          </div>
+
+          <div>
+            <h2>Moves</h2>
+            <div id="moves" class="moves muted">No moves yet.</div>
+          </div>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <span>Jev picks from legal moves only — no engine, no generated text.</span>
+      <span>
+        <a href="https://github.com/notsointresting/awesome-jev-family" target="_blank" rel="noopener">What is a decision model?</a>
+        · Powered by <a href="https://gen.pollinations.ai" target="_blank" rel="noopener">Pollinations</a>
+      </span>
+    </footer>
+
+    <!-- chess.js for move generation, legality, and game state. -->
+    <script type="module">
+      import { Chess } from "https://esm.sh/chess.js@1.0.0";
+      window.Chess = Chess;
+      import("./app.js");
+    </script>
+  </body>
+</html>
