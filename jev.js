@@ -1,51 +1,26 @@
-// The heart of the app: ask Jev to pick a move.
+// The heart of the app: ask Jev to pick a move — now with the sliday method.
 //
-// Design (why chess is the perfect Jev demo):
-//   - The board position (FEN) is the `state`.
-//   - Every LEGAL move is an option of a single `Choice` question, so an
-//     illegal move is impossible by construction — Jev can only answer within
-//     the options we give it.
-//   - A `Score` question rates the position, which drives the eval bar.
-//   - The returned per-move probabilities render as heat on the board.
+//   - Code (analysis.js) resolves exchanges, flags hanging material, and finds
+//     mate-in-1. It writes the CONSEQUENCE of each move into that move's
+//     description as finished prose, because Jev does no lookahead and is weak
+//     at arithmetic.
+//   - Every legal move is one option of a single `Choice` question, so an
+//     illegal move is impossible by construction.
+//   - A `Score` question rates the position for the eval bar.
+//   - Jev makes ONE decision per move over options that already state their
+//     consequences. That is what makes it play a real game instead of hanging
+//     pieces.
 
 import { CONFIG } from "./config.js";
 import { getToken } from "./auth.js";
+import { analysePosition } from "./analysis.js";
 
-// Jev's Choice options share a token budget, so hundreds of options degrade.
-// Chess rarely exceeds ~40 legal moves, well within range. If a position
-// somehow exceeds this, we shortlist by a light heuristic before asking.
-const MAX_OPTIONS = 40;
+// Chess Choice rarely exceeds ~40 legal moves; well within Jev's option budget.
+const MAX_OPTIONS = 60;
 
-// Build a human-readable description for each candidate move so Jev has
-// something meaningful to weigh, not just cryptic SAN.
-function describeMove(m) {
-  const parts = [];
-  if (m.captured) parts.push(`captures ${pieceName(m.captured)}`);
-  if (m.san.includes("+")) parts.push("gives check");
-  if (m.san.includes("#")) parts.push("checkmate");
-  if (m.promotion) parts.push(`promotes to ${pieceName(m.promotion)}`);
-  if (m.flags.includes("k") || m.flags.includes("q")) parts.push("castles");
-  const piece = pieceName(m.piece);
-  const base = `${piece} ${m.from}→${m.to}`;
-  return parts.length ? `${base} (${parts.join(", ")})` : base;
-}
-
-function pieceName(p) {
-  return (
-    {
-      p: "pawn",
-      n: "knight",
-      b: "bishop",
-      r: "rook",
-      q: "queen",
-      k: "king",
-    }[p.toLowerCase()] || p
-  );
-}
-
-// Ask Jev for its move given a chess.js instance whose turn it is.
-// Returns { move: <san>, probabilities: {san: p}, confidence, evalScore, evalLegend }.
-export async function chooseMove(game) {
+// Result: { move, probabilities, confidence, evalScore, source, usage }
+// source ∈ "jev" | "fallback:offmenu" | "fallback:no-legal"
+export async function chooseMove(game, ChessCtor) {
   const token = getToken();
   if (!token) {
     const err = new Error("not_connected");
@@ -53,53 +28,50 @@ export async function chooseMove(game) {
     throw err;
   }
 
-  const verboseMoves = game.moves({ verbose: true });
-  if (verboseMoves.length === 0) {
-    return { move: null, probabilities: {}, confidence: null };
+  const legalVerbose = game.moves({ verbose: true });
+  if (legalVerbose.length === 0) {
+    return { move: null, probabilities: {}, confidence: null, source: "fallback:no-legal" };
   }
 
-  // Optional shortlist if a position is unusually branchy.
-  let candidates = verboseMoves;
-  if (candidates.length > MAX_OPTIONS) {
-    // Prefer captures/checks/promotions, then fill with the rest.
-    const scored = candidates
-      .map((m) => ({
-        m,
-        w:
-          (m.captured ? 2 : 0) +
-          (m.san.includes("+") || m.san.includes("#") ? 1 : 0) +
-          (m.promotion ? 1 : 0),
-      }))
-      .sort((a, b) => b.w - a.w);
-    candidates = scored.slice(0, MAX_OPTIONS).map((s) => s.m);
+  // In-code analysis: annotate every move with its consequence.
+  const analysis = analysePosition(ChessCtor, game.fen());
+  let moves = analysis.moves;
+
+  // If a position is unusually branchy, keep the most relevant options.
+  if (moves.length > MAX_OPTIONS) {
+    moves = [...moves]
+      .sort((a, b) => weight(b) - weight(a))
+      .slice(0, MAX_OPTIONS);
   }
 
   const sideToMove = game.turn() === "w" ? "White" : "Black";
+  const legalSans = new Set(moves.map((m) => m.san));
 
-  // Choice criteria: SAN → description.
+  // criteria: SAN -> consequence-annotated description.
   const criteria = {};
-  for (const m of candidates) criteria[m.san] = describeMove(m);
+  for (const m of moves) criteria[m.san] = m.description;
 
   const state = {
+    instructions_to_reader:
+      `YOU ARE PLAYING ${sideToMove.toUpperCase()}. It is your turn. ` +
+      `Uppercase letters on the board are your pieces; lowercase are the opponent's.`,
     position_fen: game.fen(),
-    side_to_move: sideToMove,
-    ascii_board: game.ascii(),
-    move_number: Math.floor(game.history().length / 2) + 1,
-    in_check: game.inCheck?.() ?? game.in_check?.() ?? false,
+    board: game.ascii(),
+    situation: analysis.summary,
   };
 
   const questions = {
     best_move: {
       type: "choice",
       instructions:
-        `You are playing chess as ${sideToMove}. Choose the strongest legal move ` +
-        `for ${sideToMove} in this position. Consider material, king safety, and threats.`,
+        `You are playing chess as ${sideToMove} and it is your turn. Pick the strongest move. ` +
+        `Take free material when it is offered, deliver checkmate when it is available, and escape check. ` +
+        `Do not play a move described as a blunder or as losing material unless every alternative is worse.`,
       criteria,
     },
     evaluation: {
       type: "score",
-      instructions:
-        "From White's perspective, who stands better in this position?",
+      instructions: "From White's perspective, who stands better right now?",
       criteria: [
         "Black is winning",
         "Black is better",
@@ -112,10 +84,7 @@ export async function chooseMove(game) {
 
   const res = await fetch(`${CONFIG.API_BASE}/alpha/decisions`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model: CONFIG.MODEL, state, questions }),
   });
 
@@ -135,17 +104,22 @@ export async function chooseMove(game) {
   const choice = data.answers?.best_move;
   const evalAns = data.answers?.evaluation;
 
-  // Guard: the returned choice MUST be one of our legal SANs. If the API ever
-  // returns something off-menu, fall back to the highest-probability legal SAN,
-  // then to a random legal move. An illegal move must never reach the board.
-  const legalSans = new Set(candidates.map((m) => m.san));
+  // Honest fallback: an illegal move is unrepresentable, but if the API ever
+  // returns a key we didn't send, we say so via `source` rather than hiding it.
   let move = choice?.choice;
+  let source = "jev";
   if (!move || !legalSans.has(move)) {
     const probs = choice?.probabilities || {};
     const best = Object.entries(probs)
       .filter(([san]) => legalSans.has(san))
       .sort((a, b) => b[1] - a[1])[0];
-    move = best ? best[0] : candidates[Math.floor(Math.random() * candidates.length)].san;
+    if (best) {
+      move = best[0];
+      source = "fallback:offmenu"; // still Jev's distribution, just not its top pick
+    } else {
+      move = moves[0].san;
+      source = "fallback:offmenu";
+    }
   }
 
   return {
@@ -154,18 +128,25 @@ export async function chooseMove(game) {
     confidence: typeof choice?.confidence === "number" ? choice.confidence : null,
     evalScore: typeof evalAns?.score === "number" ? evalAns.score : null,
     evalLegend: evalAns?.legend || null,
+    mateAvailable: analysis.mateMove,
+    source,
     usage: data.usage || null,
   };
 }
 
-// Retry once on 429.
-export async function chooseMoveWithRetry(game) {
+// Move weight for shortlisting branchy positions: prefer mates, checks,
+// captures, and material gains.
+function weight(m) {
+  return (m.matesNow ? 100 : 0) + (m.givesCheck ? 2 : 0) + (m.net > 0 ? m.net : 0) + (m.net < 0 ? -1 : 0);
+}
+
+export async function chooseMoveWithRetry(game, ChessCtor) {
   try {
-    return await chooseMove(game);
+    return await chooseMove(game, ChessCtor);
   } catch (e) {
     if (e.code === 429) {
       await new Promise((r) => setTimeout(r, (e.retryAfter || 2) * 1000));
-      return await chooseMove(game);
+      return await chooseMove(game, ChessCtor);
     }
     throw e;
   }

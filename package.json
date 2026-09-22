@@ -1,12 +1,16 @@
 {
   "name": "jev-plays-chess",
-  "version": "0.1.0",
-  "description": "Play chess against Jev — every legal move is one option of a single typed Choice question. No engine, no generated text. Free, browser-based, BYOP, powered by Pollinations.",
+  "version": "0.2.0",
+  "description": "Play chess against Jev — every legal move is one option of a single typed Choice question, annotated in code with its consequences. No engine search, no generated text. Free, browser-based, BYOP, powered by Pollinations.",
   "type": "module",
   "private": true,
   "scripts": {
-    "check": "node --check config.js && node --check auth.js && node --check jev.js && node --check board.js && node --check app.js",
+    "check": "node --check config.js && node --check auth.js && node --check analysis.js && node --check jev.js && node --check board.js && node --check app.js",
+    "test": "node selfcheck.mjs",
     "serve": "python -m http.server 8000"
+  },
+  "devDependencies": {
+    "chess.js": "1.0.0"
   },
   "license": "MIT"
 }

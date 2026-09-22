@@ -141,7 +141,7 @@ async function jevTurn() {
   board.setInteractive(false);
   setStatus("Jev is thinking", true);
   try {
-    const result = await chooseMoveWithRetry(game);
+    const result = await chooseMoveWithRetry(game, Chess);
     if (!result.move) {
       checkGameOver();
       return;
@@ -170,10 +170,19 @@ async function jevTurn() {
 function renderJevMove(result) {
   el.jevMove.hidden = false;
   el.jmSan.textContent = result.move;
-  el.jmConf.textContent =
-    typeof result.confidence === "number"
-      ? `· ${Math.round(result.confidence * 100)}% confident`
+  let tail = "";
+  if (typeof result.confidence === "number") {
+    tail += `· ${Math.round(result.confidence * 100)}% confident `;
+  }
+  if (result.source === "jev") {
+    const toks = result.usage
+      ? ` (${result.usage.input_tokens}→${result.usage.output_tokens} tokens)`
       : "";
+    tail += `· by Jev ✓${toks}`;
+  } else if (result.source && result.source.startsWith("fallback")) {
+    tail += `· ⚠ Jev answered off-menu — played its top legal move`;
+  }
+  el.jmConf.textContent = tail;
   const entries = Object.entries(result.probabilities || {})
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3);
